@@ -2,7 +2,7 @@
 
 Simple pile game POC
 
-![image](https://user-images.githubusercontent.com/78168157/169778710-757b4100-3e77-4a1b-b3b2-51b8b897cee3.png)
+![image](https://user-images.githubusercontent.com/78168157/169782952-d7b475a7-06e1-4f8c-bdc4-fdd269aa379e.png)
 
 
 ## How to run?
