@@ -14,4 +14,20 @@ describe('Pixel utilities', ()=> {
     expect(tilePositionPx.y).toBe(expectedTilePositionPx.y);
     expect(tilePositionPx.equalTo(expectedTilePositionPx)).toBe(true);
   });
+
+  it('should properly return tile basing on x,y pixel coordinates', () => {
+    const x = 200;
+    const y = 260;
+    const expectedX = 1;
+    const expectedY = 2;
+    const expectedTilePx = new Coordinates(x, y);
+    const expectedTile = new Coordinates(expectedX, expectedY);
+
+    const tilePosition = countTileByPx(expectedTilePx, tileSizePx);
+
+    expect(tilePosition).toBeDefined()
+    expect(tilePosition.x).toBe(expectedX);
+    expect(tilePosition.y).toBe(expectedY);
+    expect(expectedTile.equalTo(tilePosition));
+  });
 })
