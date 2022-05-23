@@ -1,0 +1,10 @@
+body {
+    background-color: lightblue;
+}
+
+.test {
+    margin-right: auto;
+    margin-left: auto;
+    display: block;
+    background-color: gainsboro;
+}

@@ -1,0 +1,9 @@
+export const dimensionsConfig = {
+  TILES_X: 12,
+  TILES_Y: 8,
+  TILE_SIZE_PX: 100,
+  PLAYER_SIZE_PX: 50,
+  PLAYER_SPEED_PX: 5,
+  MISSILE_SIZE_PX: 25,
+  MISSILE_SPEED_PX: 10
+}

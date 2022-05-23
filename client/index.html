@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html>
+
+<!-- <head>
+    <link rel=“stylesheet” type=“text/css” href=“style.css” />
+</head> -->
+
+
+<head>
+    <title>Striker</title>
+    <style type="text/css">
+        body {
+            background-color: rgb(0, 0, 0);
+        }
+        
+        .viewport {
+            position: absolute;
+            top: 50%;
+            left: 20%;
+            transform: translate(0%, -50%);
+            background-color: rgb(48, 48, 48);
+        }
+        
+        .menu {
+            position: absolute;
+            transform: translate(2%, -50%);
+            top: 50%;
+            background-color: rgb(48, 48, 48);
+        }
+        
+        .font {
+            color: white;
+            font-family: sans-serif;
+        }
+    </style>
+</head>
+
+<body>
+    <script src="https://cdn.socket.io/socket.io-3.0.1.js"></script>
+
+    <canvas id="menu" class="menu" style="border: 0px solid #000000;"></canvas>
+    <canvas id="ctx" class="viewport" style="border: 0px solid #000000;"></canvas>
+
+    <script>
+        const socket = io();
+        const canvas = document.getElementById('ctx');
+        const context = canvas.getContext('2d');
+        const menu = document.getElementById('menu');
+
+        let mapWidth = 0;
+        let mapHeight = 0;
+        let tileSize = 0;
+        let playerSize = 0;
+        let missileSize = 0;
+        let players = [];
+        let missiles = [];
+        let occupiedTiles = [];
+
+        const myPlayer = {
+            id: 0,
+            x: 0,
+            y: 0
+        };
+
+        let gridImage;
+
+        // const playerImage = new Image();
+        // playerImage.src = '/client/img/player/default.png';
+        const groundImage = new Image();
+        groundImage.src = 'client/img/map/ground.png';
+        const soilImage = new Image();
+        soilImage.src = 'client/img/map/dry-soil.png';
+        const stonesImage = new Image();
+        stonesImage.src = 'client/img/map/stones.png';
+        const frameImage = new Image();
+        frameImage.src = 'client/img/map/white-frame.png';
+        const thickFrameImage = new Image();
+        thickFrameImage.src = 'client/img/map/thick-white-frame.png';
+        const smallGrassImage = new Image();
+        smallGrassImage.src = 'client/img/map/small-grass.png';
+        const grassImage = new Image();
+        grassImage.src = 'client/img/map/grass.png';
+
+        let currentSecond = 0,
+            frameCount = 0,
+            framesLastSecond = 0,
+            lastFrameTime = 0;
+
+        const controlKeys = new Map([
+            ['Control', false]
+        ]);
+
+        const combatKeys = new Map([
+            [' ', false]
+        ])
+
+        const moveKeys = new Map([
+            ['ArrowLeft', false],
+            ['ArrowUp', false],
+            ['ArrowRight', false],
+            ['ArrowDown', false],
+            ['a', false],
+            ['d', false],
+            ['s', false],
+            ['w', false]
+        ]);
+        
+        document.addEventListener('keydown', function (e) {
+            if (e.ctrlKey) {
+                e.preventDefault();
+            }
+            if (e.ctrlKey && e.key === 'w') {
+                e.preventDefault();
+            }
+        });
+
+        window.onload = function() {
+            requestAnimationFrame(drawGame);
+
+            window.addEventListener('keydown', function(e) {
+                if (moveKeys.get(e.key) === false) {
+                    moveKeys.set(e.key, true);
+                }
+                if (controlKeys.get(e.key) === false) {
+                    controlKeys.set(e.key, true);
+                }
+                if (combatKeys.get(e.key) === false) {
+                    combatKeys.set(e.key, true);
+                }
+            });
+            window.addEventListener('keyup', function(e) {
+                if (moveKeys.get(e.key)) {
+                    moveKeys.set(e.key, false);
+                }
+                if (controlKeys.get(e.key)) {
+                    controlKeys.set(e.key, false);
+                }
+                if (combatKeys.get(e.key)) {
+                    combatKeys.set(e.key, false);
+                }
+            });
+        }
+
+        function displayFPS() {
+            const sec = Math.floor(Date.now() / 1000);
+            if (sec != currentSecond) {
+                currentSecond = sec;
+                framesLastSecond = frameCount;
+                frameCount = 1;
+            } else {
+                frameCount++;
+            }
+
+            context.font = '30px Arial';
+            context.fillStyle = '#ff0000';
+            context.fillText(`FPS: ${framesLastSecond} PlayerID: ${myPlayer.id} X: ${myPlayer.x} Y: ${myPlayer.y}`, 10, 30);
+        }
+
+        function drawGame() {
+            if (context === null) {
+                return;
+            }
+            context.clearRect(0, 0, canvas.width, canvas.height);
+
+            drawGrid();
+            drawOccupiedTiles();
+            drawPlayers();
+            drawMissiles();
+            displayFPS();
+
+            emitKeys();
+
+            requestAnimationFrame(drawGame);
+        };
+
+        function createGridImage() {
+            const data = `<svg width="${mapWidth+2}" height="${mapHeight+2}" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <pattern id="grid" width="${tileSize}" height="${tileSize}" patternUnits="userSpaceOnUse">
+                        <rect width="${tileSize}" height="${tileSize}" fill="url(#smallGrid)" />
+                        <path d="M ${tileSize} 0 L 0 0 0 ${tileSize}" fill="none" stroke="black" stroke-width="1" />
+                    </pattern>
+                </defs>
+                <rect width="100%" height="100%" fill="url(#grid)" />
+            </svg>`;
+
+            const DOMURL = window.URL || window.webkitURL || window;
+
+            gridImage = new Image();
+            const svg = new Blob([data], {
+                type: 'image/svg+xml;charset=utf-8'
+            });
+            const url = DOMURL.createObjectURL(svg);
+
+            gridImage.onload = function() {
+                DOMURL.revokeObjectURL(url);
+            }
+            gridImage.src = url;
+        }
+
+        function drawGrid() {
+            const x = (canvas.width - playerSize) / 2 - myPlayer.x;
+            const y = (canvas.height - playerSize) / 2 - myPlayer.y;
+
+            for (let ix = 0; ix < mapWidth; ix += tileSize) {
+                for (let iy = 0; iy < mapHeight; iy += tileSize) {
+                    context.drawImage(soilImage, ix + x, iy + y, tileSize, tileSize);
+                    context.drawImage(frameImage, ix + x, iy + y, tileSize, tileSize);
+                }
+            }
+        }
+
+        function drawOccupiedTiles() {
+            const x = (canvas.width - playerSize) / 2 - myPlayer.x;
+            const y = (canvas.height - playerSize) / 2 - myPlayer.y;
+
+            occupiedTiles.forEach(tile => {
+                context.drawImage(thickFrameImage, (tile.x * tileSize) + x, (tile.y * tileSize) + y, tileSize, tileSize);
+            });
+        }
+
+        function drawPlayers() {
+            players.forEach(player => {
+                context.fillStyle = '#25cc43';
+                if (player.id === myPlayer.id) {
+                    myPlayer.x = player.x;
+                    myPlayer.y = player.y;
+
+                    const x = (canvas.width - playerSize * 2) / 2;
+                    const y = (canvas.height - playerSize * 2) / 2;
+
+                    const healthPercentage = (player.health / player.max_health);
+                    if (healthPercentage < 0.70) context.fillStyle = '#ffff00';
+                    if (healthPercentage < 0.30) context.fillStyle = '#ff0000';
+                    // context.drawImage(getPlayerImage(), (canvas.width - playerSize * 2) / 2, (canvas.height - playerSize * 4) / 2); //for default player image
+                    context.drawImage(getPlayerImage(player.direction), x, y);
+                    context.fillRect(x + 10, y, (80 * healthPercentage), 5);
+                } else {
+                    const x = player.x + ((canvas.width - playerSize * 2) / 2 - myPlayer.x);
+                    const y = player.y + ((canvas.height - playerSize * 2) / 2 - myPlayer.y);
+                    
+                    const healthPercentage = (player.health / player.max_health);
+                    if (healthPercentage < 0.70) context.fillStyle = '#ffff00';
+                    if (healthPercentage < 0.30) context.fillStyle = '#ff0000';
+                    // context.drawImage(getPlayerImage(player.direction), player.x + ((canvas.width - playerSize * 2) / 2 - myPlayer.x), player.y + ((canvas.height - playerSize * 4) / 2 - myPlayer.y)); //for default player image
+                    context.fillRect(x + 10, y, (80 * healthPercentage), 5);
+                    context.drawImage(getPlayerImage(player.direction), x, y);
+                }
+            });
+        }
+
+        function drawMissiles() {
+            missiles.forEach(missile => {
+                const x = missile.x + ((canvas.width - missileSize * 2) / 2 - myPlayer.x);
+                const y = missile.y + ((canvas.height - missileSize * 2) / 2 - myPlayer.y);
+
+                const missileImage = new Image();
+                missileImage.src = '/client/img/missiles/red-missile.png';
+
+                context.drawImage(missileImage, x, y);
+            });
+        }
+
+        function getPlayerImage(facingDirection) {
+            let src = '';
+            switch(facingDirection) {
+                case 'east': {
+                    src = '/client/img/player/right.png';
+                    break;
+                }
+                case 'west': {
+                    src = '/client/img/player/left.png';
+                    break;
+                }
+                case 'south': {
+                    src = '/client/img/player/down.png';
+                    break;
+                }
+                case 'north': {
+                    src = '/client/img/player/up.png';
+                    break;
+                }
+                default: {
+                    throw new Error(`Direction ${facingDirection} does not exist!`);
+                }
+            }
+
+            const playerImage = new Image();
+            playerImage.src = src;
+            
+            return playerImage;
+        }
+
+        function emitKeys() {
+            combatKeys.forEach((isPressed, key) => {
+                if (!isPressed) return;
+                
+                switch(key) {
+                    case ' ':
+                        socket.emit('fire-missile');
+                        break;
+                    default:
+                        break;
+                }
+            });
+
+            let direction;
+            moveKeys.forEach((isPressed, key) => {
+                if (!isPressed) return;
+                
+                switch(key) {
+                    case 'ArrowLeft': 
+                    case 'a':
+                        direction = 'west';
+                        break;
+                    case 'ArrowUp':
+                    case 'w':
+                        direction = 'north';
+                        break;
+                    case 'ArrowRight':
+                    case 'd':
+                        direction = 'east';
+                        break;
+                    case 'ArrowDown':
+                    case 's':
+                        direction = 'south';
+                        break;
+                    default:
+                        return;
+                }
+                
+                if (controlKeys.get('Control')) {
+                    socket.emit('face', direction);
+                } else {
+                    socket.emit('move', direction);
+                }
+            });
+        }
+
+        socket.on('map-dimensions', data => {
+            playerSize = data.playerSize;
+            missileSize = data.missileSize;
+            tileSize = data.tileSize;
+            mapWidth = tileSize * data.xSize;
+            mapHeight = tileSize * data.ySize;
+
+            canvas.width = document.documentElement.clientWidth - 400;
+            canvas.height = document.documentElement.clientHeight - 50;
+
+            menu.width = 350;
+            menu.height = document.documentElement.clientHeight - 50;
+        });
+
+        socket.on('players', data => players = data);
+        socket.on('missiles', data => missiles = data);
+        socket.on('player-id', data => myPlayer.id = data);
+        socket.on('occupied-tiles', data => occupiedTiles = data);
+    </script>
+</body>
+
+</html>
